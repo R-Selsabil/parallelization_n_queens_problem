@@ -1,0 +1,20 @@
+# depslib dependency file v1.0
+1683642567 source:c:\users\user\desktop\testhpc\main.c
+	<stdio.h>
+	<stdlib.h>
+	<stdint.h>
+	"stack.h"
+	<inttypes.h>
+	<string.h>
+
+1683642409 source:c:\users\user\desktop\testhpc\stack.c
+	"stack.h"
+	<stdio.h>
+	<stdlib.h>
+	<stdint.h>
+
+1683642424 c:\users\user\desktop\testhpc\stack.h
+	<stdio.h>
+	<stdlib.h>
+	<stdint.h>
+
