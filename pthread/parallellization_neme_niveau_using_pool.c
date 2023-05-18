@@ -28,7 +28,7 @@ pthread_mutex_t mutexQueue;
 pthread_cond_t condQueue;
 pthread_mutex_t mutexSolutions;
 
-Task taskQueue[10];
+Task taskQueue[400];
 uint64_t taskCount = 0;
 uint64_t numberOfSolutions = 0;
 
