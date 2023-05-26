@@ -1,25 +1,4 @@
 
-// N-Queens Placement and Solutions Counter
-// Author: James Walker
-// Copyrighted 2017 under the MIT license:
-//   http://www.opensource.org/licenses/mit-license.php
-//
-// Purpose:
-//   The N-Queens Counter follows an improved version of the algorithm used by
-//   the N-Queens Solver, except it does not return any of the solutions.
-//   Instead, the program counts the number of solutions for a given N-Queens
-//   problem as well as the number of times a queen is placed during the
-//   program's execution.
-// Compilation, Execution, and Example Output:
-//   $ gcc -std=c99 -O2 n_queens_counter.c -o n_queens_counter
-//   $ ./n_queens_counter.exe 12
-//   The 12-Queens problem required 428094 queen placements to find all 14200
-//   solutions
-//
-// This implementation was adapted from the algorithm provided at the bottom of
-// this webpage:
-//   www.cs.utexas.edu/users/EWD/transcriptions/EWD03xx/EWD316.9.html
-
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -124,36 +103,7 @@ static void remove_queen(const uint32_t row_i, struct chess_board *boardy)
     boardy->column[row_i] = 1;
 }
 
-void printQueenPositions(struct chess_board *board)
-{
-    printf("positions ");
-    for (uint32_t i = 0; i < board->n_size; i++)
-    {
-        printf("%d ", board->queen_positions[i]);
-    }
-    printf("\n");
 
-    printf("Column: ");
-    for (uint32_t i = 0; i < board->n_size; i++)
-    {
-        printf("%d ", board->column[i]);
-    }
-    printf("\n");
-
-    printf("Diagonal Up: ");
-    for (uint32_t i = 0; i < (2 * board->n_size - 1); i++)
-    {
-        printf("%d ", board->diagonal_up[i]);
-    }
-    printf("\n");
-
-    printf("Diagonal Down: ");
-    for (uint32_t i = 0; i < (2 * board->n_size - 1); i++)
-    {
-        printf("%d ", board->diagonal_down[i]);
-    }
-    printf("\n\n");
-}
 
 struct chess_board *copyBoard(struct chess_board *board)
 {
@@ -222,9 +172,8 @@ static void place_next_queen_seq(const uint32_t row_boundary, struct chess_board
             set_queen(row_i, boardy);
             if (boardy->column_j == boardy->n_size)
             {
-                //#pragma omp atomic 
+                #pragma omp atomic 
                 total_solutions += 2;
-                boardy->solutions += 2;
             }
             else
             {
@@ -264,7 +213,7 @@ void place_next_queen_parallel(const uint32_t row_boundary, struct chess_board *
                 }
                 else
                 {
-                    if(local_board->column_j < 6) {
+                    if(local_board->column_j < local_board->n_size/4 + 1) {
                         if (local_board->queen_positions[0] != middle) {
                             place_next_queen_parallel(local_board->n_size, local_board);
                         } else {
@@ -305,8 +254,8 @@ void place_next_queen(const uint32_t row_boundary, struct chess_board *board)
 int main(int argc, char *argv[])
 {
 
-    double temps_debut, temps_fin;
-    long double temps_total_pris = 0;
+    clock_t temps_debut, temps_fin;
+    double temps_total_pris = 0;
     struct chess_board *board;
 
     static const uint32_t default_n = 8;
@@ -324,10 +273,10 @@ int main(int argc, char *argv[])
 
     temps_fin = clock(); // omp_get_wtime();
 
-    temps_total_pris = (temps_fin - temps_debut);
+    temps_total_pris = (double)(temps_fin - temps_debut) / CLOCKS_PER_SEC;
     // print_counts(board);
 
-    printf("Temps pris: %Lf\n", temps_total_pris);
+    printf("Temps pris: %f\n s", temps_total_pris);
 
     smash_board(board); // Free dynamically allocated memory
 

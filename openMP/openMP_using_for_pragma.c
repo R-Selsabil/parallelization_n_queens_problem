@@ -1,25 +1,4 @@
 
-// N-Queens Placement and Solutions Counter
-// Author: James Walker
-// Copyrighted 2017 under the MIT license:
-//   http://www.opensource.org/licenses/mit-license.php
-//
-// Purpose: 
-//   The N-Queens Counter follows an improved version of the algorithm used by
-//   the N-Queens Solver, except it does not return any of the solutions.
-//   Instead, the program counts the number of solutions for a given N-Queens
-//   problem as well as the number of times a queen is placed during the
-//   program's execution.
-// Compilation, Execution, and Example Output:
-//   $ gcc -std=c99 -O2 n_queens_counter.c -o n_queens_counter
-//   $ ./n_queens_counter.exe 12
-//   The 12-Queens problem required 428094 queen placements to find all 14200
-//   solutions
-//
-// This implementation was adapted from the algorithm provided at the bottom of
-// this webpage:
-//   www.cs.utexas.edu/users/EWD/transcriptions/EWD03xx/EWD316.9.html
-
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
