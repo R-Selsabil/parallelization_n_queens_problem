@@ -6,8 +6,10 @@
 #include <time.h>
 #include <inttypes.h>
 #include <sys/time.h>
-
-#define THREAD_NUM 8
+// Le nombre de threads
+#define THREAD_NUM 16
+// Le niveau ou s'arrète la parallèlisation des tâches
+#define level 1
 
 typedef struct chess_board
 {
@@ -18,18 +20,24 @@ typedef struct chess_board
     uint32_t *diagonal_down;
     uint32_t column_j;
     uint64_t placements;
+    // start et end pour définir les bordures des valeurs des positions à parcourir possibles d'une queen de position j
     uint64_t start;
     uint64_t end;
 } Board;
-
+// un pointeur vers un echéquier qui simule une tâche dans la file
 typedef Board *Task;
-
+// mutex pour accéder â le queue
 pthread_mutex_t mutexQueue;
+// pour signaler aux threads qu'il existe une tâche dans la file
 pthread_cond_t condQueue;
+// mutex pour accéder au solutions
 pthread_mutex_t mutexSolutions;
 
+// file des tâches de taille assez grande
 Task taskQueue[400];
+// pour compter le nombre de tâches dans la file
 uint64_t taskCount = 0;
+// le nombre total de solutions
 uint64_t numberOfSolutions = 0;
 
 void place_next_queen_thread(struct chess_board *board);
@@ -51,7 +59,6 @@ static void initialize_board(const uint32_t n_queens, struct chess_board **board
         exit(EXIT_FAILURE);
     }
 
-    // Dynamically allocate memory for chessboard arrays that track positions
     const uint32_t diagonal_size = 2 * n_queens - 1;
     const uint32_t total_size = 2 * (n_queens + diagonal_size);
     (*board)->queen_positions = malloc(sizeof(uint32_t) * total_size);
@@ -65,7 +72,6 @@ static void initialize_board(const uint32_t n_queens, struct chess_board **board
     (*board)->diagonal_up = &(*board)->column[n_queens];
     (*board)->diagonal_down = &(*board)->diagonal_up[diagonal_size];
 
-    // Initialize the chess board parameters
     (*board)->n_size = n_queens;
     for (uint32_t i = 0; i < n_queens; ++i)
     {
@@ -73,16 +79,14 @@ static void initialize_board(const uint32_t n_queens, struct chess_board **board
     }
     for (uint32_t i = n_queens; i < total_size; ++i)
     {
-        // Initializes values for column, diagonal_up, and diagonal_down
         (*board)->queen_positions[i] = 1;
     }
     (*board)->column_j = 0;
     (*board)->placements = 0;
-    //(*board)->solutions = 0;
     (*board)->start = start;
     (*board)->end = end;
 }
-
+// pour créer une copie de l'échiquier
 struct chess_board *copyBoard(struct chess_board *board)
 {
     Task task = malloc(sizeof(struct chess_board));
@@ -92,16 +96,12 @@ struct chess_board *copyBoard(struct chess_board *board)
         fprintf(stderr, "The number of queens must be greater than 0.\n");
         exit(EXIT_SUCCESS);
     }
-
-    // Dynamically allocate memory for chessboard struct
     task = malloc(sizeof(struct chess_board));
     if (task == NULL)
     {
         fprintf(stderr, "Memory allocation failed for chess board.\n");
         exit(EXIT_FAILURE);
     }
-
-    // Dynamically allocate memory for chessboard arrays that track positions
     const uint32_t diagonal_size = 2 * board->n_size - 1;
     const uint32_t total_size = 2 * (board->n_size + diagonal_size);
     (task)->queen_positions = malloc(sizeof(uint32_t) * total_size);
@@ -114,8 +114,6 @@ struct chess_board *copyBoard(struct chess_board *board)
     (task)->column = &(task)->queen_positions[board->n_size];
     (task)->diagonal_up = &(task)->column[board->n_size];
     (task)->diagonal_down = &(task)->diagonal_up[diagonal_size];
-
-    // Initialize the chess board parameters
     (task)->n_size = board->n_size;
     for (uint32_t i = 0; i < board->n_size; ++i)
     {
@@ -123,38 +121,19 @@ struct chess_board *copyBoard(struct chess_board *board)
     }
     for (uint32_t i = board->n_size; i < total_size; ++i)
     {
-        // Initializes values for column, diagonal_up, and diagonal_down
         task->queen_positions[i] = board->queen_positions[i];
     }
     task->column_j = board->column_j;
     task->placements = board->placements;
-    // task->solutions = board->solutions;
     task->start = board->start;
     task->end = board->end;
-    // printf("Inside copy board n_size = %d and end = %d\n",task->n_size,task->end);
-    // for (uint32_t i = 0; i < total_size; i++)
-    // {
-    //     printf("queen_positions = %d\n",task->queen_positions[i]);
-    // }
-
     return task;
 }
 
-// Frees the dynamically allocated memory for the chess board structure
 static void smash_board(struct chess_board *board)
 {
     free(board->queen_positions);
     free(board);
-}
-
-// Check if a queen can be placed in at row 'i' of the current column
-static uint32_t square_is_free(const uint32_t row_i ,  struct chess_board *board) {
-//   printf("up = %d , down = %d , column = %d \n",board->diagonal_up[(board->n_size - 1) + (board->column_j - row_i)],
-//    board->diagonal_down[board->column_j + row_i],
-//    board->column[row_i]);
-  return board->column[row_i] &
-         board->diagonal_up[(board->n_size - 1) + (board->column_j - row_i)] &
-         board->diagonal_down[board->column_j + row_i];
 }
 
 static void set_queen(const uint32_t row_i, struct chess_board *board)
@@ -174,19 +153,22 @@ static void remove_queen(const uint32_t row_i, struct chess_board *board)
     board->diagonal_up[(board->n_size - 1) + (board->column_j - row_i)] = 1;
     board->column[row_i] = 1;
 }
-
+// la tâche à executer par le thread
 void executeTask(Task *task)
 {
-    if ((*task)->column_j == 1)
+    // vérifier si on est arrivé au niveau de parallélisation désiré
+    if ((*task)->column_j <= level)
     {
+        // on ajoute des tâches
         place_next_queen(*task);
     }
+    // sinon on execute la tâche
     else
     {
         place_next_queen_thread(*task);
     }
 }
-
+// pour ajouter une tâche dans la file
 void submitTask(Task *task)
 {
     pthread_mutex_lock(&mutexQueue);
@@ -195,7 +177,7 @@ void submitTask(Task *task)
     pthread_mutex_unlock(&mutexQueue);
     pthread_cond_signal(&condQueue);
 }
-
+// la fonction executé par chaque thread
 void *startThread(void *args)
 {
     while (1)
@@ -203,6 +185,7 @@ void *startThread(void *args)
         Task task;
 
         pthread_mutex_lock(&mutexQueue);
+        // pour tuer le thread s'il ne prend pas de tâche dans cette durée
         struct timespec timeout;
         struct timeval now;
 
@@ -210,7 +193,7 @@ void *startThread(void *args)
 
         timeout.tv_sec = now.tv_sec + 3;
         timeout.tv_nsec = now.tv_usec * 1000;
-
+        // le thread boucle jusqu'à qu'il trouve une tâche ou que la durée est passé
         while (taskCount == 0)
         {
             if (pthread_cond_timedwait(&condQueue, &mutexQueue, &timeout) == ETIMEDOUT)
@@ -219,9 +202,10 @@ void *startThread(void *args)
                 return NULL;
             }
         }
-
+        // prendre la premère tâche de la file
         task = taskQueue[0];
         int i;
+        // décalage vers la gauche de la file
         for (i = 0; i < taskCount - 1; i++)
         {
             taskQueue[i] = taskQueue[i + 1];
@@ -229,7 +213,7 @@ void *startThread(void *args)
         taskCount--;
         pthread_mutex_unlock(&mutexQueue);
         executeTask(&task);
-        free(task);  //free task
+        free(task); // free task
     }
 }
 
@@ -240,24 +224,32 @@ void place_next_queen(struct chess_board *board)
     const uint32_t middle = board->column_j ? board->n_size : board->n_size >> 1;
     for (uint32_t row_i = start; row_i < end; ++row_i)
     {
-        if (square_is_free(row_i, board))
+        // on utilise ces vérification au lieu de la fonction donnéé pour vérifier la disponibilité d'un emplacement
+        // c'est la même chose juste ordonné par les plus petites vérifications vers les plus grandes pour diminuer le temps d'execution
+        if (board->column[row_i])
         {
-            set_queen(row_i, board);
-            if (board->queen_positions[0] != middle)
+            if (board->diagonal_down[board->column_j + row_i])
             {
-                board->start = 0;
-                board->end = board->n_size;
-                Task task = copyBoard(board);
-                submitTask(&task);
+                if (board->diagonal_up[(board->n_size - 1) + (board->column_j - row_i)])
+                {
+                    set_queen(row_i, board);
+                    if (board->queen_positions[0] != middle)
+                    {
+                        board->start = 0;
+                        board->end = board->n_size;
+                        Task task = copyBoard(board);
+                        submitTask(&task);
+                    }
+                    else
+                    {
+                        board->start = 0;
+                        board->end = middle;
+                        Task task = copyBoard(board);
+                        submitTask(&task);
+                    }
+                    remove_queen(row_i, board);
+                }
             }
-            else
-            {
-                board->start = 0;
-                board->end = middle;
-                Task task = copyBoard(board);
-                submitTask(&task);
-            }
-            remove_queen(row_i, board);
         }
     }
 }
@@ -269,50 +261,51 @@ void place_next_queen_thread(struct chess_board *board)
     const uint32_t middle = board->column_j ? board->n_size : board->n_size >> 1;
     for (uint32_t row_i = start; row_i < end; ++row_i)
     {
-        if (square_is_free(row_i, board))
+        if (board->column[row_i])
         {
-            set_queen(row_i, board);
-            if (board->column_j == board->n_size)
+            if (board->diagonal_down[board->column_j + row_i])
             {
-                pthread_mutex_lock(&mutexSolutions);
-                numberOfSolutions += 2;
-                pthread_mutex_unlock(&mutexSolutions);
+                if (board->diagonal_up[(board->n_size - 1) + (board->column_j - row_i)])
+                {
+                    set_queen(row_i, board);
+                    if (board->column_j == board->n_size)
+                    {
+                        pthread_mutex_lock(&mutexSolutions);
+                        numberOfSolutions += 2;
+                        pthread_mutex_unlock(&mutexSolutions);
+                    }
+                    else if (board->queen_positions[0] != middle)
+                    {
+                        board->start = 0;
+                        board->end = board->n_size;
+                        place_next_queen_thread(board);
+                    }
+                    else
+                    {
+                        board->start = 0;
+                        board->end = middle;
+                        place_next_queen_thread(board);
+                    }
+                    remove_queen(row_i, board);
+                }
             }
-            else if (board->queen_positions[0] != middle)
-            {
-                board->start = 0;
-                board->end = board->n_size;
-                place_next_queen_thread(board);
-            }
-            else
-            {
-                board->start = 0;
-                board->end = middle;
-                place_next_queen_thread(board);
-            }
-            remove_queen(row_i, board);
         }
     }
 }
 
 int main(int argc, char *argv[])
 {
-
-    static const uint32_t default_n = 6;
+    static const uint32_t default_n = 16;
     const uint32_t n_queens = (argc != 1) ? (uint32_t)atoi(argv[1]) : default_n;
-    // const uint32_t default_threads = 32; // Default number of threads
-    // const uint32_t num_threads = (argc > 2) ? (uint32_t)atoi(argv[2]) : default_threads;
     const uint32_t row_boundary = (n_queens >> 1) + (n_queens & 1);
-
     pthread_t th[THREAD_NUM];
     pthread_mutex_init(&mutexQueue, NULL);
     pthread_mutex_init(&mutexSolutions, NULL);
     pthread_cond_init(&condQueue, NULL);
     Board *board;
-
     clock_t start_time = clock();
-
     int i;
+    // création des threads
     for (i = 0; i < THREAD_NUM; i++)
     {
         if (pthread_create(&th[i], NULL, &startThread, NULL) != 0)
@@ -320,10 +313,9 @@ int main(int argc, char *argv[])
             perror("Failed to create the thread");
         }
     }
-
     initialize_board(n_queens, &board, 0, row_boundary);
     place_next_queen(board);
-
+    // join des threads
     for (i = 0; i < THREAD_NUM; i++)
     {
         if (pthread_join(th[i], NULL) != 0)
@@ -332,10 +324,8 @@ int main(int argc, char *argv[])
         }
     }
     clock_t end_time = clock();
-
     double time_totale = (double)(end_time - start_time) / CLOCKS_PER_SEC;
-    printf("Nombre de solution global : %d Dans : %f s \n", numberOfSolutions, time_totale - 3);
-
+    printf("N = %d : Nombre de solution global : %d dans : %f s \n", n_queens, numberOfSolutions, time_totale - 3);
     pthread_mutex_destroy(&mutexQueue);
     pthread_cond_destroy(&condQueue);
     return 0;

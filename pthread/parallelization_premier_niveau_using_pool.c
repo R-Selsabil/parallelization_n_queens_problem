@@ -84,12 +84,6 @@ static void initialize_board(const uint32_t n_queens, struct chess_board **board
     (*board)->end = end;
 }
 
-// Frees the dynamically allocated memory for the chess board structure
-static void smash_board(struct chess_board *board)
-{
-    free(board->queen_positions);
-    free(board);
-}
 
 // Check if a queen can be placed in at row 'i' of the current column
 static uint32_t square_is_free(const uint32_t row_i, struct chess_board *board)
@@ -119,22 +113,7 @@ static void remove_queen(const uint32_t row_i, struct chess_board *board)
     board->column[row_i] = 1;
 }
 
-// Prints the number of queen placements and solutions for the NxN chess board
-static void print_counts(struct chess_board *board)
-{
-    // The next line fixes double-counting when solving the 1-queen problem
-    const uint64_t solution_count = board->n_size == 1 ? 1 : board->solutions;
-    const char const output[] = "The %u-Queens problem required %lu queen "
-                                "placements to find all %lu solutions\n";
-    fprintf(stdout, output, board->n_size, board->placements, solution_count);
-}
-
 void executeTask(Task* task) {
-    //usleep(50000);
-    //int result = task->a + task->b;
-    //printf("The sum of %d and %d is %d\n", task->a, task->b, result);
-    //printf("Task where column = %d \n",(*task)->column_j);
-    //printf("Thread begin form %d end %d\n",(*task)->start,(*task)->end);
     place_next_queen_thread(*task);
 }
 
@@ -146,25 +125,6 @@ void submitTask(Task *task) {
     pthread_cond_signal(&condQueue);
 }
 
-// void* startThread(void* args) {
-//     while (1) {
-//         Task task;
-
-//         pthread_mutex_lock(&mutexQueue);
-//         while (taskCount == 0) {
-//             pthread_cond_wait(&condQueue, &mutexQueue);
-//         }
-
-//         task = taskQueue[0];
-//         int i;
-//         for (i = 0; i < taskCount - 1; i++) {
-//             taskQueue[i] = taskQueue[i + 1];
-//         }
-//         taskCount--;
-//         pthread_mutex_unlock(&mutexQueue);
-//         executeTask(&task);
-//     }
-// }
 
 
 
@@ -255,11 +215,8 @@ void place_next_queen_thread(struct chess_board *board)
             set_queen(row_i, board);
             if (board->column_j == board->n_size)
             {
-                // printf("Solutions founds\n");
-                // board->solutions += 2;
                 pthread_mutex_lock(&mutexSolutions);
                 numberOfSolutions += 2;
-                //printf("Number of solutions untill now : %ld\n",numberOfSolutions);
                 pthread_mutex_unlock(&mutexSolutions);
             }
             else if (board->queen_positions[0] != middle)
@@ -282,8 +239,6 @@ void place_next_queen_thread(struct chess_board *board)
 int main(int argc, char* argv[]) {
     static const uint32_t default_n = 12;
     const uint32_t n_queens = (argc != 1) ? (uint32_t)atoi(argv[1]) : default_n;
-    // const uint32_t default_threads = 32; // Default number of threads
-    // const uint32_t num_threads = (argc > 2) ? (uint32_t)atoi(argv[2]) : default_threads;
     const uint32_t row_boundary = (n_queens >> 1) + (n_queens & 1);
 
     pthread_t th[THREAD_NUM];

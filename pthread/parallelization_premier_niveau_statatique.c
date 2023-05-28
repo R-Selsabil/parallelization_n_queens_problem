@@ -121,11 +121,8 @@ static void print_counts(struct chess_board *board)
 // Recursive function for finding valid queen placements on the chess board
 uint64_t place_next_queen(struct chess_board *board)
 {
-    // printf("Insside place next queen from %d to %d\n", board->start, board->end);
-    // printf("The board is on column = %d\n", board->column_j);
     uint64_t start = board->start;
     uint64_t end = board->end;
-    // uint64_t row_boundary = board->end;
     const uint32_t middle = board->column_j ? board->n_size : board->n_size >> 1;
     for (uint32_t row_i = start; row_i < end; ++row_i)
     {
