@@ -10,9 +10,10 @@
                 "UNICODE",
                 "_UNICODE"
             ],
+            "compilerPath": "cl.exe",
             "cStandard": "c17",
-            "intelliSenseMode": "${default}",
-            "compilerPath": "Select IntelliSense Configuration"
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64"
         }
     ],
     "version": 4
