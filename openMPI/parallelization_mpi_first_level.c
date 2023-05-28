@@ -6,10 +6,6 @@
 #include <time.h>
 #include <mpi.h>
 
-
-pthread_mutex_t solutions_mutex;
-uint64_t total_solutions = 0; // Shared variable to store the sum of solutions
-
 // An abstract representation of an NxN chess board to tracking open positions
 struct chess_board
 {
@@ -21,6 +17,7 @@ struct chess_board
     uint32_t column_j;   // Stores column to place the next queen in
     uint64_t placements; // Tracks total number queen placements
     uint64_t solutions;  // Tracks number of solutions
+    //indicate the intervals of rows that will be verified for each process
     uint64_t start;
     uint64_t end;
 };
@@ -75,12 +72,7 @@ static void initialize_board(const uint32_t n_queens, struct chess_board **board
     (*board)->end = end;
 }
 
-// Frees the dynamically allocated memory for the chess board structure
-static void smash_board(struct chess_board *board)
-{
-    free(board->queen_positions);
-    free(board);
-}
+
 
 // Check if a queen can be placed in at row 'i' of the current column
 static uint32_t square_is_free(const uint32_t row_i, struct chess_board *board)
@@ -110,21 +102,10 @@ static void remove_queen(const uint32_t row_i, struct chess_board *board)
     board->column[row_i] = 1;
 }
 
-// Prints the number of queen placements and solutions for the NxN chess board
-static void print_counts(struct chess_board *board)
-{
-    // The next line fixes double-counting when solving the 1-queen problem
-    const uint64_t solution_count = board->n_size == 1 ? 1 : board->solutions;
-    const char const output[] = "The %u-Queens problem required %lu queen "
-                                "placements to find all %lu solutions\n";
-    fprintf(stdout, output, board->n_size, board->placements, solution_count);
-}
-
 // Recursive function for finding valid queen placements on the chess board
 uint64_t place_next_queen(struct chess_board *board)
 {
-    // printf("Insside place next queen from %d to %d\n", board->start, board->end);
-    // printf("The board is on column = %d\n", board->column_j);
+    // retrieve the interval to be verified by a specific thread
     uint64_t start = board->start;
     uint64_t end = board->end;
     // uint64_t row_boundary = board->end;
@@ -139,7 +120,6 @@ uint64_t place_next_queen(struct chess_board *board)
                 // Due to 2-fold symmetry of the chess board, accurate counts can be
                 // obtained by only searching half the board and double-counting each
                 // solution found (the sole exception being the 1-Queen problem)
-                // printf("\nSolution found +2\n");
                 board->solutions += 2;
             }
             else if (board->queen_positions[0] != middle)
@@ -162,19 +142,6 @@ uint64_t place_next_queen(struct chess_board *board)
     return board->solutions;
 }
 
-// Wrapper function for pthread_create
-static void *place_next_queen_wrapper(void *arg)
-{
-    struct chess_board *board = (struct chess_board *)arg;
-    uint64_t solutions = place_next_queen(board);
-
-    pthread_mutex_lock(&solutions_mutex);
-    total_solutions += solutions;
-    pthread_mutex_unlock(&solutions_mutex);
-
-    return (void *)solutions;
-}
-
 int main(int argc, char *argv[])
 {
     clock_t start_time = clock();
@@ -194,29 +161,31 @@ int main(int argc, char *argv[])
     // symmetry when searching for solutions
     const uint32_t row_boundary = (n_queens >> 1) + (n_queens & 1);
 
+    struct chess_board *board;
 
+    //devide the first colonne between processes
+    uint32_t start = rank * row_boundary / num_procs;
+    uint32_t end = (rank + 1) * row_boundary / num_procs;
+    initialize_board(n_queens, &board, start, end);  
 
+    uint64_t solutions = place_next_queen(board);
 
-        struct chess_board *board;
-        uint32_t start = rank * row_boundary / num_procs;
-        uint32_t end = (rank + 1) * row_boundary / num_procs;
-        initialize_board(n_queens, &board, start, end);  
-        uint64_t solutions = place_next_queen(board);
-        uint64_t total_solutions = 0;
-        MPI_Reduce(&solutions, &total_solutions, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-        // Print the total number of solutions from the root process
-        if (rank == 0) {
-            clock_t end_time = clock();
-            double time_totale = (double)(end_time-start_time)/CLOCKS_PER_SEC;
-            printf("program takes : %f s \n",time_totale);
-            printf("The %u-Queens problem has %lu solutions\n", n_queens, total_solutions);
-        }
-
-        // Clean up the MPI environment
-        MPI_Finalize();
-        return EXIT_SUCCESS;
-
+    uint64_t total_solutions = 0;
+    //Perform reduction operation to gather the local solutions from each process and compute the total solutions
+    MPI_Reduce(&solutions, &total_solutions, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+    
+    // Print the total number of solutions from the root process
+    if (rank == 0) {
+        clock_t end_time = clock();
+        double time_totale = (double)(end_time-start_time)/CLOCKS_PER_SEC;
+        printf("program takes : %f s \n",time_totale);
+        printf("The %u-Queens problem has %lu solutions\n", n_queens, total_solutions);
     }
+
+    // Clean up the MPI environment
+    MPI_Finalize();
+    return EXIT_SUCCESS;
+}
 
 
 

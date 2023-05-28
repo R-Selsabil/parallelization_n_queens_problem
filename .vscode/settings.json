@@ -3,5 +3,6 @@
     "files.associations": {
         "\"*.h\"": "c",
         "n_queens_counter_lib.h": "c"
-    }
+    },
+    "C_Cpp.errorSquiggles": "enabled"
 }

@@ -6,9 +6,11 @@
 #include <time.h>
 #include <mpi.h>
 
-
-pthread_mutex_t solutions_mutex;
+uint64_t partial_solutions = 0;
+uint64_t total_solutions = 0;
 uint64_t solutions = 0; // Shared variable to store the sum of solutions
+
+int nthreads = 4;
 
 // An abstract representation of an NxN chess board to tracking open positions
 struct chess_board
@@ -21,11 +23,21 @@ struct chess_board
     uint32_t column_j;   // Stores column to place the next queen in
     uint64_t placements; // Tracks total number queen placements
     uint64_t solutions;  // Tracks number of solutions
+    //indicate the intervals of rows that will be verified for each thread or process
     uint64_t start;
     uint64_t end;
 };
+
 struct chess_board *board;
+
 struct chess_board *copyBoard(const struct chess_board *board);
+
+void place_next_queen_sequential(const uint32_t row_boundary, struct chess_board  *board);
+
+// The parallel part of the algorithm, this function generates tasks to be executed by the threads.
+void place_next_queen_parallel(const uint32_t row_boundary, struct chess_board  *board);
+/** Launch the parallel process of placing queens on the chessboard. **/
+void place_queens(const uint32_t row_boundary, struct chess_board  *board);
 
 
 // Handles dynamic memory allocation of the arrays and sets initial values
@@ -76,14 +88,6 @@ static void initialize_board(const uint32_t n_queens, struct chess_board **board
     (*board)->start = start;
     (*board)->end = end;
 }
-/*
-// Frees the dynamically allocated memory for the chess board structure
-static void smash_board(struct chess_board *board)
-{
-    free(board->queen_positions);
-    free(board);
-}
-*/
 
 // Check if a queen can be placed in at row 'i' of the current column
 static uint32_t square_is_free(const uint32_t row_i, struct chess_board *board)
@@ -112,82 +116,102 @@ static void remove_queen(const uint32_t row_i, struct chess_board *board)
     board->diagonal_up[(board->n_size - 1) + (board->column_j - row_i)] = 1;
     board->column[row_i] = 1;
 }
-/*
-// Prints the number of queen placements and solutions for the NxN chess board
-static void print_counts(struct chess_board *board)
+
+
+#pragma omp threadprivate(partial_solutions)
+/** Lancer le processus de placement parallèle des reines sur l'échiquier. **/
+void place_queens(const uint32_t row_boundary, struct chess_board *board)
+
 {
-    // The next line fixes double-counting when solving the 1-queen problem
-    const uint64_t solution_count = board->n_size == 1 ? 1 : board->solutions;
-    const char const output[] = "The %u-Queens problem required %lu queen "
-                                "placements to find all %lu solutions\n";
-    fprintf(stdout, output, board->n_size, board->placements, solution_count);
-}
-*/
-void place_next_queen(const uint32_t row_boundary, struct chess_board *board)
-{
-    #pragma omp parallel
-    #pragma omp single nowait
+    //crée une région parallèle avec nqueens threads
+    #pragma omp parallel num_threads(nthreads) 
     {
-        place_next_queen_parallel(row_boundary, board);
+        //Initialiser le nombre de solutions partielles et de placements partiels pour chaque thread
+        partial_solutions = 0;
+
+        //Assurer que la ligne suivante soit appelée par un seul thread et que les autres threads ne l'attendent pas
+        #pragma omp single 
+        {
+            //Fonction parallélisée permettant de placer la reine suivante sur l'échiquier board.
+            place_next_queen_parallel(row_boundary, board);
+        }
+
+        //Additionner le nombre de solutions et de placements trouvés par chaque thread
+        #pragma omp critical
+        total_solutions += partial_solutions;
     }
+
     
 }
+//la partie parallèle de l'algorithme, cette fonction génère des tâches à exécuter pour les threads 
+void place_next_queen_parallel(const uint32_t row_boundary, struct chess_board *board) {
+    const uint32_t middle = board->column_j ? board->n_size : board->n_size >> 1;
+    uint64_t start = board->start;
+    uint64_t end = board->end;
+    struct chess_board *local_board;
 
-void place_next_queen_parallel(const uint32_t row_boundary , struct chess_board *boardy)
-{
-    uint64_t start = boardy->start;
-    uint64_t end = boardy->end;
-    uint32_t n_size = boardy->n_size ;           // Number of queens on the NxN chess board
-
-    const uint32_t middle = boardy->column_j ? boardy->n_size : boardy->n_size >> 1;
-
-    for (uint32_t row_i = start; row_i < end; ++row_i)
-    {      
-        //printf("thread parent %d\n", omp_get_thread_num());
-        uint32_t isfree = square_is_free(row_i, boardy);
-        if (isfree)
+    for (uint32_t row_i = start; row_i < end; ++row_i) {  
+        
+        if (square_is_free(row_i, board)) 
         {
-            #pragma omp task firstprivate(boardy)
+            #pragma omp task firstprivate(row_i) mergeable 
             {       
-                struct chess_board *local_board = copyBoard(boardy);
+                local_board = copyBoard(board);
+
                 set_queen(row_i, local_board);
-                if (local_board->column_j == local_board->n_size)
-                {
-                    local_board->solutions += 2;
-                }
-                else
-                {
 
-                    if(local_board->column_j < local_board->n_size/4 + 1) {
-                        if (local_board->queen_positions[0] != middle) {
-                            local_board->start = 0;
-                            local_board->end = local_board->n_size;
-                            place_next_queen_parallel(local_board->n_size, local_board);
-                        } else {
-                            local_board->start = 0;
-                            local_board->end = middle;
-                            place_next_queen_parallel(middle, local_board);
-                        }
-                    } else {
-                        if (local_board->queen_positions[0] != middle) {
-                            local_board->start = 0;
-                            local_board->end = local_board->n_size;
-                            place_next_queen_seq(local_board->n_size, local_board);
-                        } else {
-                            local_board->start = 0;
-                            local_board->end = middle;
-                            place_next_queen_seq(middle, local_board);
-                        }
-                    }
-                    
+                local_board->start = 0;
+                local_board->end = local_board->n_size;
+                uint32_t limit = local_board->n_size;
+                if (local_board->queen_positions[0] == middle) {
+                    local_board->end = middle;
+                    limit = middle;
                 }
-                remove_queen(row_i, local_board);
+
+
+                if(local_board->column_j < local_board->n_size / 4 + 1) { 
+                
+                    place_next_queen_parallel(limit, local_board);
+                } else {
+                    place_next_queen_sequential(limit, local_board);
+                }
+
+            #pragma omp taskyield
+            
             }
-
         }
     }
-    #pragma omp taskwait
 }
+void place_next_queen_sequential(const uint32_t row_boundary, struct chess_board *board)
+{
+    const uint32_t middle = board->column_j ? board->n_size : board->n_size >> 1;
+
+
+    for (uint32_t row_i = 0; row_i < row_boundary; ++row_i)
+    {
+        if (square_is_free(row_i, board))
+        {
+            set_queen(row_i, board);
+
+
+            if (board->column_j == board->n_size){
+                partial_solutions += 2;
+            } else {
+                uint32_t limit = board->n_size;
+                if (board->queen_positions[0] == middle) {
+                    limit = middle;
+                }
+
+                place_next_queen_sequential(limit, board);
+            }
+
+
+            remove_queen(row_i, board);
+        }
+    }
+}
+
+
 struct chess_board *copyBoard(const struct chess_board *board)
 
 {
@@ -242,44 +266,7 @@ struct chess_board *copyBoard(const struct chess_board *board)
 
 
 
-int tasks_created = 0;
 
-void place_next_queen_seq(const uint32_t row_boundary, struct chess_board *boardy)
-{
-    uint64_t start = boardy->start;
-    uint64_t end = boardy->end;
-    //printf("seq version\n");
-    const uint32_t middle = boardy->column_j ? boardy->n_size : boardy->n_size >> 1;
-
-    for (uint32_t row_i = start; row_i < end; ++row_i)
-    {
-        if (square_is_free(row_i, boardy))
-        {
-            set_queen(row_i, boardy);
-            if (boardy->column_j == boardy->n_size)
-            {
-                #pragma omp atomic 
-                solutions += 2;
-            }
-            else
-            {
-                if (boardy->queen_positions[0] != middle)
-                {
-                    boardy->start = 0;
-                    boardy->end = boardy->n_size;
-                    place_next_queen_seq(boardy->n_size, boardy);
-                }
-                else
-                {
-                    boardy->start = 0;
-                    boardy->end = middle;
-                    place_next_queen_seq(middle, boardy);
-                }
-            }
-            remove_queen(row_i, boardy);
-        }
-    }
-}
 
 int main(int argc, char *argv[])
 {
@@ -288,42 +275,41 @@ int main(int argc, char *argv[])
     int rank;
 
     const uint32_t n_queens = (argc != 1) ? (uint32_t)atoi(argv[1]) : default_n;
-    clock_t start_time = clock();
+
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    // initialize_board(n_queens,board);
-
-    // Determines the index for the middle row to take advantage of board
-    // symmetry when searching for solutions
     const uint32_t row_boundary = (n_queens >> 1) + (n_queens & 1);
 
 
+    struct chess_board *board;
 
+    uint32_t start = rank * row_boundary / num_procs;
+    uint32_t end = (rank + 1) * row_boundary / num_procs;
 
-        struct chess_board *board;
-        uint32_t start = rank * row_boundary / num_procs;
-        uint32_t end = (rank + 1) * row_boundary / num_procs;
-        initialize_board(n_queens, &board, start, end);  
-        omp_set_num_threads(4);
-        place_next_queen(row_boundary,board);
-        uint64_t total_solutions = 0;
-        printf(" %lu solutions\n", solutions);
-        MPI_Reduce(&solutions, &total_solutions, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-        // Print the total number of solutions from the root process
-        if (rank == 0) {
-            clock_t end_time = clock();
-            double time_totale = (double)(end_time-start_time)/CLOCKS_PER_SEC;
-            printf("program takes : %f s \n",time_totale);
-            printf("The %u-Queens problem has %lu solutions\n", n_queens, total_solutions);
-        }
+    initialize_board(n_queens, &board, start, end);  
+    omp_set_num_threads(nthreads);
 
-        // Clean up the MPI environment
-        MPI_Finalize();
-        return EXIT_SUCCESS;
+    clock_t start_time = clock();
 
+    place_queens(row_boundary,board);
+
+    uint64_t totalS = 0;
+    printf(" %lu solutions\n", total_solutions);
+    MPI_Reduce(&total_solutions, &totalS, 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+    // Print the total number of solutions from the root process
+    if (rank == 0) {
+        clock_t end_time = clock();
+        double time_totale = (double)(end_time-start_time)/CLOCKS_PER_SEC;
+        printf("program takes : %f s \n",time_totale);
+        printf("The %u-Queens problem has %lu solutions\n", n_queens, totalS);
     }
+
+    // Clean up the MPI environment
+    MPI_Finalize();
+    return EXIT_SUCCESS;
+}
 
 
 

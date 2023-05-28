@@ -11,7 +11,8 @@
                 "_UNICODE"
             ],
             "cStandard": "c17",
-            "intelliSenseMode": "windows-msvc-x64"
+            "intelliSenseMode": "${default}",
+            "compilerPath": "Select IntelliSense Configuration"
         }
     ],
     "version": 4
