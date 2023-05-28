@@ -5,9 +5,9 @@ int tasks_created = 0;
 
 uint32_t nqueens = 8; 
 
-int nthreads = 4;
+int nthreads = 8;
 
-int partial_solutions, partial_placements;
+int partial_solutions = 0;
 
 void place_next_queen_sequential(const uint32_t row_boundary, CHESS_BOARD *board);
 void place_next_queen_parallel(const uint32_t row_boundary, CHESS_BOARD *board);
@@ -15,7 +15,8 @@ void place_queens(const uint32_t row_boundary, CHESS_BOARD *board);
 
 
 
-#pragma omp threadprivate(partial_solutions, partial_placements)
+
+#pragma omp threadprivate(partial_solutions)
 
 /** Lancer le processus de placement parallèle des reines sur l'échiquier. **/
 void place_queens(const uint32_t row_boundary, CHESS_BOARD *board)
@@ -26,7 +27,6 @@ void place_queens(const uint32_t row_boundary, CHESS_BOARD *board)
     {
         //Initialiser le nombre de solutions partielles et de placements partiels pour chaque thread
         partial_solutions = 0;
-        partial_placements = 0;
         
         //Assurer que la ligne suivante soit appelée par un seul thread et que les autres threads ne l'attendent pas
         #pragma omp single 
@@ -36,7 +36,7 @@ void place_queens(const uint32_t row_boundary, CHESS_BOARD *board)
         }
 
         //Additionner le nombre de solutions et de placements trouvés par chaque thread
-        #pragma omp critical
+        #pragma omp atomic
         total_solutions += partial_solutions;
     }
 
@@ -48,33 +48,44 @@ void place_queens(const uint32_t row_boundary, CHESS_BOARD *board)
 void place_next_queen_parallel(const uint32_t row_boundary, CHESS_BOARD *board) {
     const uint32_t middle = board->column_j ? board->n_size : board->n_size >> 1;
     
+    //échiquier local 
     CHESS_BOARD *local_board;
     for (uint32_t row_i = 0; row_i < row_boundary; ++row_i) {  
-        
+        //si la position est valide 
         if (square_is_free(row_i, board)) 
         {
+
+            //créer une tâche pour placer une reine
             #pragma omp task firstprivate(row_i) mergeable 
             {       
+                //copier l'échequier actuelle pour donner à la tâche une zone mémoire
                 local_board = copyBoard(board);
 
+                //placer la reine dans l'échiquier local
                 set_queen(row_i, local_board);
 
+                //définir la limite pour la recherche dans la colonne suivante
                 uint32_t limit = local_board->n_size;
                 if (local_board->queen_positions[0] == middle) {
                     limit = middle;
                 }
 
-
+                //définir où arrêter la création de tâches 
+                //parce que les tâches deviennent plus petites au fur et à mesure que l'on progresse dans l'échiquier
+                //
                 if(local_board->column_j < nqueens / 4 + 1) { 
-                
+                    //on crée des tâches tant que l'on est dans le premier quart du tableau + 1
                     place_next_queen_parallel(limit, local_board);
                 } else {
+                    //sinon, nous laissons chaque thread continuer son travail
                     place_next_queen_sequential(limit, local_board);
                 }
 
+            //Déléguer l'exécution de la tâche en cours aux threads disponibles.
             #pragma omp taskyield
             
             }
+            //libérer la zone mémoire locale
             free(local_board); 
         }
     }
@@ -113,127 +124,29 @@ void place_next_queen_sequential(const uint32_t row_boundary, CHESS_BOARD *board
 
 
 
-void place_next_queen(const uint32_t row_boundary, CHESS_BOARD *board)
-{
-    const uint32_t middle = board->column_j ? board->n_size : board->n_size >> 1;
-    for (uint32_t row_i = 0; row_i < row_boundary; ++row_i) {
-        if (square_is_free(row_i, board)) {
-            set_queen(row_i, board);
-            if (board->column_j == board->n_size) {
-
-                total_solutions += 2;
-            } else if (board->queen_positions[0] != middle) {
-                place_next_queen(board->n_size, board);
-            } else {
-                place_next_queen(middle, board);
-            }
-            remove_queen(row_i, board);
-        }
-    }
-}
-
-
 
 
 int main(int argc, char *argv[])
 {
 
     CHESS_BOARD *board;
-    double start_time, end_time;
-    double temps_parallel_pris, temps_sequentiel_pris = 0;
 
-    nqueens = (argc != 1) ? (uint32_t)atoi(argv[1]) : nqueens;
+    if (argc != 3) {
+        printf("Invalid number of arguments. Usage: program_name <nqueens> <nthreads>\n");
+        return 1;
+    }
+
+    nqueens = (uint32_t)atoi(argv[1]);
+    nthreads = (uint32_t)atoi(argv[2]);
 
     const uint32_t row_boundary = (nqueens >> 1) + (nqueens & 1);
 
-    initialize_board(nqueens, &board);
-    start_time = omp_get_wtime();
-    place_next_queen(row_boundary, board); 
-    end_time = omp_get_wtime();
-    smash_board(board);
 
-    temps_sequentiel_pris = (end_time - start_time);
-    printf("Temps sequentiel : %f\n", temps_sequentiel_pris);
-    printf("final %d\n", total_solutions);
-
-    
-    total_solutions = 0;
     initialize_board(nqueens, &board);
-    start_time = omp_get_wtime();
+
     place_queens(row_boundary, board); 
-    end_time = omp_get_wtime();
+
     smash_board(board);
-
-    temps_parallel_pris = (end_time - start_time);
-
-
-    printf("Temps parallel : %f\n", temps_parallel_pris);
-    printf("final %d\n", total_solutions);
-
-    
-    
-
-    printf("\nAcceleration avec 4 threads : %f\n", temps_sequentiel_pris/temps_parallel_pris);
-
-
-    nthreads = 8;
-    total_solutions = 0;
-    initialize_board(nqueens, &board);
-    start_time = omp_get_wtime();
-    place_queens(row_boundary, board); 
-    end_time = omp_get_wtime();
-    smash_board(board);
-
-    temps_parallel_pris = (end_time - start_time);
-
-
-    printf("Temps parallel avec 8 threads: %f\n", temps_parallel_pris);
-    printf("final %d\n", total_solutions);
-
-    
-    
-
-    printf("\nAcceleration : %f\n", temps_sequentiel_pris/temps_parallel_pris);
-
-
-    nthreads = 16;
-    total_solutions = 0;
-    initialize_board(nqueens, &board);
-    start_time = omp_get_wtime();
-    place_queens(row_boundary, board); 
-    end_time = omp_get_wtime();
-    smash_board(board);
-
-    temps_parallel_pris = (end_time - start_time);
-
-
-    printf("Temps parallel avec 16 threads: %f\n", temps_parallel_pris);
-    printf("final %d\n", total_solutions);
-
-    
-    
-
-    printf("\nAcceleration : %f\n", temps_sequentiel_pris/temps_parallel_pris);
-
-
-    nthreads = 32;
-    total_solutions = 0;
-    initialize_board(nqueens, &board);
-    start_time = omp_get_wtime();
-    place_queens(row_boundary, board); 
-    end_time = omp_get_wtime();
-    smash_board(board);
-
-    temps_parallel_pris = (end_time - start_time);
-
-
-    printf("Temps parallel avec 32 threads: %f\n", temps_parallel_pris);
-    printf("final %d\n", total_solutions);
-
-    
-    
-
-    printf("\nAcceleration : %f\n", temps_sequentiel_pris/temps_parallel_pris);
 
 
     return EXIT_SUCCESS;
