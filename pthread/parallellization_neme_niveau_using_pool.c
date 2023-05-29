@@ -42,7 +42,7 @@ uint64_t numberOfSolutions = 0;
 
 void place_next_queen_thread(struct chess_board *board);
 void place_next_queen(struct chess_board *board);
-
+void place_next_queen_without_parallelization(struct chess_board *board);
 static void initialize_board(const uint32_t n_queens, struct chess_board **board, uint32_t start, uint32_t end)
 {
     if (n_queens < 1)
@@ -253,6 +253,24 @@ void place_next_queen(struct chess_board *board)
         }
     }
 }
+void place_next_queen_without_parallelization(struct chess_board *board,uint32_t row_boundary){
+    const uint32_t middle = board->column_j ? board->n_size : board->n_size >> 1;
+    for (uint32_t row_i = 0; row_i < row_boundary; ++row_i) {
+        if (square_is_free(row_i, board)) {
+            set_queen(row_i, board);
+            if (board->column_j == board->n_size) {
+
+                total_solutions += 2;
+            } else if (board->queen_positions[0] != middle) {
+                place_next_queen(board->n_size, board);
+            } else {
+                place_next_queen(middle, board);
+            }
+            remove_queen(row_i, board);
+        }
+    }
+}
+
 
 void place_next_queen_thread(struct chess_board *board)
 {
@@ -328,5 +346,9 @@ int main(int argc, char *argv[])
     printf("N = %d : Nombre de solution global : %d dans : %f s \n", n_queens, numberOfSolutions, time_totale - 3);
     pthread_mutex_destroy(&mutexQueue);
     pthread_cond_destroy(&condQueue);
+
+    //sequetiel execution 
+    //place_next_queen_without_parallelization(board,row_boundary);
+
     return 0;
 }
