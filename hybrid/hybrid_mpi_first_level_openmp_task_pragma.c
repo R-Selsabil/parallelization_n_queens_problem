@@ -38,6 +38,7 @@ void place_next_queen_sequential(const uint32_t row_boundary, struct chess_board
 void place_next_queen_parallel(const uint32_t row_boundary, struct chess_board  *board);
 /** Launch the parallel process of placing queens on the chessboard. **/
 void place_queens(const uint32_t row_boundary, struct chess_board  *board);
+void place_queens_without_parallelization(const uint32_t row_boundary, struct chess_board  *board);
 
 
 // Handles dynamic memory allocation of the arrays and sets initial values
@@ -142,6 +143,24 @@ void place_queens(const uint32_t row_boundary, struct chess_board *board)
     }
 
     
+}
+
+void place_queens_without_parallelization(row_boundary,board){
+    const uint32_t middle = board->column_j ? board->n_size : board->n_size >> 1;
+    for (uint32_t row_i = 0; row_i < row_boundary; ++row_i) {
+        if (square_is_free(row_i, board)) {
+            set_queen(row_i, board);
+            if (board->column_j == board->n_size) {
+
+                total_solutions += 2;
+            } else if (board->queen_positions[0] != middle) {
+                place_next_queen(board->n_size, board);
+            } else {
+                place_next_queen(middle, board);
+            }
+            remove_queen(row_i, board);
+        }
+    }
 }
 //la partie parallèle de l'algorithme, cette fonction génère des tâches à exécuter pour les threads 
 void place_next_queen_parallel(const uint32_t row_boundary, struct chess_board *board) {
@@ -308,6 +327,10 @@ int main(int argc, char *argv[])
 
     // Clean up the MPI environment
     MPI_Finalize();
+
+    //sequentiel execution: 
+    //place_queens_without_parallelization(row_boundary,board);
+
     return EXIT_SUCCESS;
 }
 

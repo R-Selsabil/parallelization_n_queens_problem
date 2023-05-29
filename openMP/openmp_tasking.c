@@ -235,6 +235,8 @@ int main(int argc, char *argv[])
 
     printf("\nAcceleration : %f\n", temps_sequentiel_pris/temps_parallel_pris);
 
+    //sequentiel execution
+    //place_next_queen(row_boundary, board);
 
     return EXIT_SUCCESS;
 }
