@@ -224,7 +224,7 @@ int main(int argc, char *argv[])
     // Clean up the MPI environment
     MPI_Finalize();
 
-    //sequentiel
+    //sequential
     //uint32_t end = row_boundary;
     //place_next_queen_sequentiel(board);
     

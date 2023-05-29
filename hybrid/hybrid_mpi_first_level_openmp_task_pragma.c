@@ -328,7 +328,7 @@ int main(int argc, char *argv[])
     // Clean up the MPI environment
     MPI_Finalize();
 
-    //sequentiel execution: 
+    //sequential execution: 
     //place_queens_without_parallelization(row_boundary,board);
 
     return EXIT_SUCCESS;

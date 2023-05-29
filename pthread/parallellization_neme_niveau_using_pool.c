@@ -347,7 +347,7 @@ int main(int argc, char *argv[])
     pthread_mutex_destroy(&mutexQueue);
     pthread_cond_destroy(&condQueue);
 
-    //sequetiel execution 
+    //sequetial execution 
     //place_next_queen_without_parallelization(board,row_boundary);
 
     return 0;
