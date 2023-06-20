@@ -33,15 +33,21 @@ typedef Board *Task;
 uint64_t taskCount = 0;
 uint64_t numberOfSolutions = 0;
 // Function prototypes
-//uint64_t place_next_queen_parallel(struct chess_board *board);
-//void executeTask(Task *task);
+
+//creer les taches du premier colonne jusqu'à la limite : level
 void createTasks(Task *task);
 
+//enfiler la tache : task
 void submitTask(Board *task);
+
+//executer avec la fonction createTasks afin de generer les taches à partir d'un certain echiquier donné
 void place_next_queen(struct chess_board *board);
+
+//execution sequentiel de la fonction principale 
 void place_next_queen_process(struct chess_board *board);
 static void initialize_board(const uint32_t n_queens, struct chess_board **board, uint32_t start, uint32_t end);
 
+//définir un nouveau type de données MPI (MPI_Datatype) qui correspond à la structure Board
 void defineTaskStruct(MPI_Datatype *mpiTaskType);
 
 Board taskQueue[MAX_BOARDS];
