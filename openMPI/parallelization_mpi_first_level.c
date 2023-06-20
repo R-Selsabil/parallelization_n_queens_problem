@@ -181,8 +181,6 @@ uint64_t place_next_queen_sequentiel(struct chess_board *board)
 
 int main(int argc, char *argv[])
 {
-
-    clock_t start_time = clock();
     static const uint32_t default_n = 4;
     int num_procs = 2;
     int rank;
@@ -190,6 +188,7 @@ int main(int argc, char *argv[])
     const uint32_t n_queens = (argc != 1) ? (uint32_t)atoi(argv[1]) : default_n;
     
     //parallel
+    clock_t start_time = clock();
 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
